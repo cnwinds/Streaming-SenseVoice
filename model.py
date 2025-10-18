@@ -788,6 +788,10 @@ class SenseVoiceSmall(nn.Module):
         **kwargs,
     ):
 
+        # 新增参数：是否输出置信度和声纹
+        output_confidence = kwargs.get("output_confidence", False)
+        output_speaker_embedding = kwargs.get("output_speaker_embedding", False)
+        speaker_identifier = kwargs.get("speaker_identifier", None)
 
         meta_data = {}
         if (
@@ -858,6 +862,30 @@ class SenseVoiceSmall(nn.Module):
         if kwargs.get("ban_emo_unk", False):
             ctc_logits[:, :, self.emo_dict["unk"]] = -float("inf")
 
+        # 计算softmax概率用于置信度
+        if output_confidence:
+            ctc_probs = self.ctc.softmax(encoder_out)
+        
+        # 提取说话人嵌入
+        speaker_embeddings = None
+        speaker_ids = None
+        if output_speaker_embedding:
+            from speaker_embedding import extract_speaker_embedding
+            speaker_embeddings = extract_speaker_embedding(
+                self, encoder_out, encoder_out_lens, None
+            )
+            
+            # 如果提供了说话人识别器，生成说话人ID
+            if speaker_identifier is not None:
+                speaker_ids = []
+                for i in range(speaker_embeddings.size(0)):
+                    emb = speaker_embeddings[i].cpu().detach().numpy()
+                    speaker_id, similarity = speaker_identifier.identify_speaker(emb, return_similarity=True)
+                    speaker_ids.append({
+                        "speaker_id": speaker_id,
+                        "similarity": similarity
+                    })
+
         results = []
         b, n, d = encoder_out.size()
         if isinstance(key[0], (list, tuple)):
@@ -877,12 +905,54 @@ class SenseVoiceSmall(nn.Module):
 
             mask = yseq != self.blank_id
             token_int = yseq[mask].tolist()
+            
+            # 提取token级别的置信度
+            token_confidences = []
+            if output_confidence:
+                probs = ctc_probs[i, : encoder_out_lens[i].item(), :]
+                # 获取每个token的置信度
+                for tid in token_int:
+                    # 找到该token在序列中的位置并获取其概率
+                    token_mask = (torch.argmax(probs, dim=-1) == tid)
+                    if token_mask.any():
+                        token_conf = probs[token_mask, tid].max().item()
+                    else:
+                        token_conf = 0.0
+                    token_confidences.append(token_conf)
 
             # Change integer-ids to tokens
             text = tokenizer.decode(token_int)
             if ibest_writer is not None:
                 ibest_writer["text"][key[i]] = text
 
+            # 构建结果字典
+            result_i = {"key": key[i], "text": text}
+            
+            # 添加token置信度
+            if output_confidence:
+                tokens = tokenizer.text2tokens(text)
+                result_i["token_confidences"] = [
+                    {
+                        "token": tok,
+                        "confidence": conf
+                    }
+                    for tok, conf in zip(tokens[4:] if len(tokens) > 4 else tokens, 
+                                        token_confidences[4:] if len(token_confidences) > 4 else token_confidences)
+                ]
+                # 计算平均置信度
+                if len(token_confidences) > 0:
+                    result_i["average_confidence"] = sum(token_confidences) / len(token_confidences)
+                else:
+                    result_i["average_confidence"] = 0.0
+            
+            # 添加说话人信息
+            if output_speaker_embedding:
+                if speaker_embeddings is not None:
+                    result_i["speaker_embedding"] = speaker_embeddings[i].cpu().detach().numpy().tolist()
+                if speaker_ids is not None:
+                    result_i["speaker_info"] = speaker_ids[i]
+            
+            # 添加时间戳（如果需要）
             if output_timestamp:
                 from itertools import groupby
                 timestamp = []
@@ -914,11 +984,10 @@ class SenseVoiceSmall(nn.Module):
                         token_id += 1
                     _start = _end
 
-                result_i = {"key": key[i], "text": text, "timestamp": timestamp}
-                results.append(result_i)
-            else:
-                result_i = {"key": key[i], "text": text}
-                results.append(result_i)
+                result_i["timestamp"] = timestamp
+                
+            results.append(result_i)
+            
         return results, meta_data
 
     def export(self, **kwargs):

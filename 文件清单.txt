@@ -1,0 +1,79 @@
+========================================
+SenseVoice 实时语音识别改造 - 文件清单
+========================================
+
+【新增文件】共 8 个
+
+核心功能模块：
+  1. realtime_stream.py        - 实时音频流处理（7.6KB）
+  2. speaker_embedding.py      - 声纹识别模块（8.4KB）
+  3. realtime_api.py           - WebSocket API服务（19KB）
+
+演示和测试：
+  4. demo_realtime.py          - 命令行演示程序（9.0KB）
+  5. test_new_features.py      - 功能测试脚本（7.4KB）
+
+文档：
+  6. README_REALTIME.md        - 详细使用文档（9.6KB）
+  7. CHANGES_SUMMARY.md        - 改动总结（7.9KB）
+  8. 改造完成说明.md           - 快速入门指南
+
+工具：
+  9. quick_start.sh            - 快速启动脚本（3.0KB）
+  10. 文件清单.txt             - 本文件
+
+【修改文件】共 2 个
+
+  1. model.py                  - 增强inference方法，支持置信度和声纹
+  2. requirements.txt          - 添加新依赖包
+
+【功能清单】
+
+✅ 1. 实时流式语音识别
+   - 音频流缓冲管理
+   - VAD语音活动检测
+   - 实时分段处理
+   - WebSocket通信
+
+✅ 2. Token级别置信度
+   - 每个token的置信度分数
+   - 平均置信度计算
+   - 置信度过滤支持
+
+✅ 3. 声纹识别
+   - 说话人特征提取
+   - 唯一标识生成
+   - 相似度匹配
+   - 多说话人区分
+   - 声纹数据库持久化
+
+【快速开始】
+
+1. 安装依赖：
+   pip install -r requirements.txt
+
+2. 测试功能：
+   python3 test_new_features.py
+
+3. 启动服务：
+   export SENSEVOICE_DEVICE=cuda:0
+   python3 realtime_api.py
+
+4. 访问演示：
+   http://localhost:8000/realtime-demo
+
+【文档导航】
+
+- 新手入门：改造完成说明.md
+- 详细文档：README_REALTIME.md
+- 技术细节：CHANGES_SUMMARY.md
+- 原始文档：README_zh.md
+
+【重要提示】
+
+✓ 所有原有功能保持不变
+✓ 新功能完全向后兼容
+✓ 新增参数均为可选
+✓ 不影响现有代码运行
+
+改造完成时间：2025-10-18
