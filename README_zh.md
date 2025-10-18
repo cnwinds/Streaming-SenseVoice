@@ -194,9 +194,83 @@ text = rich_transcription_postprocess(res [0][0]["text"])
 print(text)
 ```
 
-## 服务部署
+## 实时语音识别
 
-Undo
+SenseVoice 现在支持实时语音识别功能，包括：
+
+- **实时流式识别**：支持连续音频流的实时识别
+- **置信度输出**：为每个识别的token提供置信度分数
+- **声纹识别**：自动识别和区分不同的说话人
+- **WebSocket API**：支持实时双向通信
+
+### 实时识别使用
+
+#### 基本用法
+
+```python
+from realtime_asr import RealtimeASR, RecognitionResult
+
+def on_result(result: RecognitionResult):
+    print(f"说话人: {result.speaker_id}")
+    print(f"置信度: {result.confidence:.3f}")
+    print(f"文本: {result.text}")
+
+# 创建实时ASR实例
+asr = RealtimeASR(
+    model_dir="iic/SenseVoiceSmall",
+    device="cuda:0",
+    confidence_threshold=0.6,
+    enable_speaker_id=True
+)
+
+# 开始实时识别
+asr.start_recording(callback=on_result)
+
+# 停止识别
+asr.stop_recording()
+```
+
+#### WebSocket API
+
+```javascript
+// 连接WebSocket
+const ws = new WebSocket('ws://localhost:50000/ws/realtime');
+
+ws.onmessage = function(event) {
+    const data = JSON.parse(event.data);
+    if (data.type === 'result') {
+        console.log('识别结果:', data.data);
+    }
+};
+
+// 发送音频数据
+ws.send(JSON.stringify({
+    type: 'audio',
+    data: base64AudioData
+}));
+```
+
+#### 启动实时识别服务
+
+```bash
+# 启动API服务
+python api.py
+
+# 启动实时识别演示
+python realtime_demo.py
+
+# 运行测试
+python test_realtime.py
+```
+
+### 实时识别特性
+
+- **低延迟**：优化的流式处理，延迟低于500ms
+- **高精度**：支持置信度阈值过滤，提高识别准确性
+- **多说话人**：自动识别和区分不同说话人
+- **实时反馈**：支持实时结果回调和处理
+
+## 服务部署
 
 ### 导出与测试
 
