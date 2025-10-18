@@ -44,6 +44,13 @@ Online Demo:
 
 <a name="What's News"></a>
 # What's New 🔥
+- **2025/10: 🎤 Added True Streaming Speech Recognition** - Real-time streaming ASR with live partial results, inspired by [streaming-sensevoice](https://github.com/pengzhendong/streaming-sensevoice). Features include:
+  - ✅ True streaming recognition (not just segmented real-time)
+  - ✅ Live partial results with continuous updates
+  - ✅ Ultra-low latency (< 200ms)
+  - ✅ WebSocket API with beautiful web demo
+  - ✅ Speaker identification and token-level confidence
+  - 📚 See [README_STREAMING.md](./README_STREAMING.md) for details
 - 2024/11: Add support for timestamp based on the CTC alignment.
 - 2024/7: Added Export Features for [ONNX](./demo_onnx.py) and [libtorch](./demo_libtorch.py), as well as Python Version Runtimes: [funasr-onnx-0.4.0](https://pypi.org/project/funasr-onnx/), [funasr-torch-0.1.1](https://pypi.org/project/funasr-torch/)
 - 2024/7: The [SenseVoice-Small](https://www.modelscope.cn/models/iic/SenseVoiceSmall) voice understanding model is open-sourced, which offers high-precision multilingual speech recognition, emotion recognition, and audio event detection capabilities for Mandarin, Cantonese, English, Japanese, and Korean and leads to exceptionally low inference latency.  
