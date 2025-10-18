@@ -2,15 +2,20 @@
 # export SENSEVOICE_DEVICE=cuda:1
 
 import os, re
-from fastapi import FastAPI, File, Form, UploadFile
+from fastapi import FastAPI, File, Form, UploadFile, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from typing_extensions import Annotated
-from typing import List
+from typing import List, Optional
 from enum import Enum
 import torchaudio
+import asyncio
+import json
+import base64
+import numpy as np
 from model import SenseVoiceSmall
 from funasr.utils.postprocess_utils import rich_transcription_postprocess
 from io import BytesIO
+from realtime_asr import RealtimeASR, RecognitionResult
 
 TARGET_FS = 16000
 
@@ -31,7 +36,10 @@ m.eval()
 
 regex = r"<\|.*\|>"
 
-app = FastAPI()
+app = FastAPI(title="SenseVoice API", version="2.0.0")
+
+# 全局ASR实例
+realtime_asr: Optional[RealtimeASR] = None
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -94,6 +102,137 @@ async def turn_audio_to_text(
         it["text"] = rich_transcription_postprocess(it["text"])
     return {"result": res[0]}
 
+
+@app.post("/api/v1/asr/realtime/init")
+async def init_realtime_asr(
+    confidence_threshold: float = 0.6,
+    enable_speaker_id: bool = True
+):
+    """初始化实时语音识别"""
+    global realtime_asr
+    try:
+        realtime_asr = RealtimeASR(
+            model_dir=model_dir,
+            device=os.getenv("SENSEVOICE_DEVICE", "cuda:0"),
+            confidence_threshold=confidence_threshold,
+            enable_speaker_id=enable_speaker_id
+        )
+        return {"status": "success", "message": "实时ASR初始化成功"}
+    except Exception as e:
+        return {"status": "error", "message": f"实时ASR初始化失败: {str(e)}"}
+
+@app.websocket("/ws/realtime")
+async def websocket_realtime(websocket: WebSocket):
+    """WebSocket实时语音识别"""
+    await websocket.accept()
+    
+    if not realtime_asr:
+        await websocket.send_text(json.dumps({
+            "type": "error",
+            "message": "实时ASR未初始化，请先调用 /api/v1/asr/realtime/init"
+        }))
+        await websocket.close()
+        return
+    
+    def on_result(result: RecognitionResult):
+        """结果回调函数"""
+        response = {
+            "type": "result",
+            "data": {
+                "text": result.text,
+                "confidence": result.confidence,
+                "speaker_id": result.speaker_id,
+                "timestamp": result.timestamp,
+                "language": result.language,
+                "emotion": result.emotion,
+                "event": result.event
+            }
+        }
+        asyncio.create_task(websocket.send_text(json.dumps(response)))
+    
+    try:
+        # 开始录音
+        realtime_asr.start_recording(callback=on_result)
+        await websocket.send_text(json.dumps({
+            "type": "status",
+            "message": "开始实时语音识别"
+        }))
+        
+        # 等待消息
+        while True:
+            try:
+                data = await websocket.receive_text()
+                message = json.loads(data)
+                
+                if message["type"] == "stop":
+                    break
+                    
+            except WebSocketDisconnect:
+                break
+            except Exception as e:
+                await websocket.send_text(json.dumps({
+                    "type": "error",
+                    "message": f"处理错误: {str(e)}"
+                }))
+                
+    finally:
+        # 停止录音
+        if realtime_asr:
+            realtime_asr.stop_recording()
+        await websocket.close()
+
+@app.post("/api/v1/asr/realtime/start")
+async def start_realtime_recognition():
+    """开始实时识别"""
+    global realtime_asr
+    if not realtime_asr:
+        return {"status": "error", "message": "实时ASR未初始化"}
+    
+    try:
+        realtime_asr.start_recording()
+        return {"status": "success", "message": "开始实时识别"}
+    except Exception as e:
+        return {"status": "error", "message": f"开始识别失败: {str(e)}"}
+
+@app.post("/api/v1/asr/realtime/stop")
+async def stop_realtime_recognition():
+    """停止实时识别"""
+    global realtime_asr
+    if not realtime_asr:
+        return {"status": "error", "message": "实时ASR未初始化"}
+    
+    try:
+        realtime_asr.stop_recording()
+        return {"status": "success", "message": "停止实时识别"}
+    except Exception as e:
+        return {"status": "error", "message": f"停止识别失败: {str(e)}"}
+
+@app.get("/api/v1/asr/realtime/results")
+async def get_realtime_results():
+    """获取实时识别结果"""
+    global realtime_asr
+    if not realtime_asr:
+        return {"status": "error", "message": "实时ASR未初始化"}
+    
+    try:
+        results = realtime_asr.get_all_results()
+        return {
+            "status": "success",
+            "results": [
+                {
+                    "text": r.text,
+                    "confidence": r.confidence,
+                    "speaker_id": r.speaker_id,
+                    "timestamp": r.timestamp,
+                    "language": r.language,
+                    "emotion": r.emotion,
+                    "event": r.event
+                }
+                for r in results
+            ]
+        }
+    except Exception as e:
+        return {"status": "error", "message": f"获取结果失败: {str(e)}"}
 
 if __name__ == "__main__":
     import uvicorn
